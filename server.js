@@ -21,10 +21,14 @@ let center = {};
 let poiCoords = null;
 let userCount = 0;
 let updateRatings = true;
-
+// test change sdhjfbjk
 
 let readyUsers = 0;
 let leaderboard = [];
+
+// let swarmRatings = [];
+// let swarmComments = [];
+// let swarmReceipts = []; hsdlhflssnfsnksjksdfsd
 
 
 let jsonFilePath = path.join(__dirname, 'data/new_bucket.jsonl');
@@ -46,7 +50,6 @@ const io = new Server(server, {
   },
 });
 
-let rooms = {}; // Object to keep track of rooms and their users
 
 io.on('connection', (socket) => {
   console.log('A user has joined:', socket.id);
@@ -85,31 +88,47 @@ io.on('connection', (socket) => {
     callback({ message: 'POI added successfully', newPOI });
   });
 
-  socket.on('user-ready', (roomName) => {
-    if (rooms[roomName]) {
-      rooms[roomName].readyUsers++;
-      console.log(`User is ready in room ${roomName}: ${rooms[roomName].readyUsers}`);
-      if (rooms[roomName].readyUsers >= rooms[roomName].userCount) {
-        console.log('GOTOSWARM!!!');
-        rooms[roomName].readyUsers = 0;
-        rooms[roomName].userCount = 0;
-        updateRatings = true;
-        console.log(`UserCount after reset in room ${roomName}: ${rooms[roomName].userCount}`);
-        console.log(`ReadyUsers after reset in room ${roomName}: ${rooms[roomName].readyUsers}`);
-        io.to(roomName).emit('go-to-swarm');
-      } else {
-        io.to(roomName).emit('update-user-ready-client', rooms[roomName].readyUsers);
-      }
+  socket.on('user-ready', () => {
+    readyUsers++;
+    console.log('User is ready : ', readyUsers);
+    if (readyUsers >= userCount){
+      console.log('GOTOSWARM!!!')
+      // test
+      readyUsers = 0;
+      userCount = 0;
+      updateRatings = true;
+      console.log('UserCount after reset : ', userCount);
+      console.log('ReadyUsers after reset  : ', readyUsers);
+      io.emit('go-to-swarm');
+    } else {
+      io.emit('update-user-ready-client', readyUsers);
     }
   });
 
-  socket.on('user-not-ready', (roomName) => {
-    if (rooms[roomName]) {
-      rooms[roomName].readyUsers--;
-      console.log(`User is not ready in room ${roomName}: ${rooms[roomName].readyUsers}`);
-      io.to(roomName).emit('update-user-ready-client', rooms[roomName].readyUsers);
-    }
+  socket.on('user-not-ready', () => {
+    readyUsers--;
+    console.log('User is not ready : ', readyUsers);
+    io.emit('update-user-ready-client', readyUsers);
   });
+
+  // socket.on('send-swarm-results', (data) => {
+  //   swarmRatings.push(data.swarmRating);
+  //   swarmComments.push(data.swarmComment) //;
+  //   swarmReceipts.push(data.firstName + ' ' + data.lastName);
+
+  //   if ((swarmRatings.length==userCount) && (swarmComments.length==userCount) && (swarmReceipts.length==userCount)){
+  //     console.log('SAVING IN FILE');
+  //     // SAVE THE THREE VARIABLES HERE IN THE JSON FILE!
+  //     // I have made a temporary empty jsonl file called swarm_receipts.jsonl
+  //     // userCount = 0;
+  //   }
+    
+  //   // console.log('Printing the swarm receipts');
+  //   // console.log(swarmRatings);
+  //   // console.log(swarmComments);
+  //   // console.log(swarmReceipts);
+  // })
+
 
   socket.on('reset-counts', () => {
     readyUsers = 0;
@@ -117,17 +136,15 @@ io.on('connection', (socket) => {
   });
 
   // Handle when a user joins the waiting room
-  socket.on('join-waiting-room', (roomName) => {
-    if (!rooms[roomName]) {
-      rooms[roomName] = { userCount: 0, readyUsers: 0 };
-    }
-    rooms[roomName].userCount++;
-    socket.join(roomName);
-    io.to(roomName).emit('update-user-count', rooms[roomName].userCount);
+  socket.on('join-waiting-room', () => {
+    userCount++; // Increment user count
+    // totalUsers++;
+    io.emit('update-user-count', Math.max(userCount, 0)); // Emit the updated user count to all clients
     
-    console.log(`User joined room ${roomName}: ${rooms[roomName].userCount}`);
+    console.log(`Join-waiting room event: ${userCount}`);
 
-    if (rooms[roomName].userCount >= 4) {
+    // If enough users have joined, start the swarm
+    if (userCount >= 4) {
       //Draw 5 poi's from data/new_data.jsonl with using python script
       const N_new = 4;
       const N_old = 0;
@@ -152,9 +169,9 @@ io.on('connection', (socket) => {
           drawnIds: drawnIds,
           drawnOneliners: drawnOneliners,
           drawnDescriptions: drawnDescriptions,
-          userCount: rooms[roomName].userCount
+          userCount: userCount
         }
-        io.to(roomName).emit('start-swarming', payload); // Emit an event to all users to start the swarm
+        io.emit('start-swarming', payload); // Emit an event to all users to start the swarm
         swarmComments = [];
         swarmRatings = [];
         swarmReceipts = [];
@@ -168,15 +185,6 @@ io.on('connection', (socket) => {
         console.log(`Python drawing process exited with code ${code}`);
       });
 
-    }
-  });
-
-  socket.on('leave-waiting-room', (roomName) => {
-    if (rooms[roomName]) {
-      rooms[roomName].userCount = Math.max(rooms[roomName].userCount - 1, 0);
-      socket.leave(roomName);
-      io.to(roomName).emit('update-user-count', rooms[roomName].userCount);
-      console.log(`User left room ${roomName}: ${rooms[roomName].userCount}`);
     }
   });
 
@@ -341,13 +349,9 @@ io.on('connection', (socket) => {
 
   
   // Decrement user count only when the user cancels the popup (leaves waiting room)
-  socket.on('leave-waiting-room', (roomName) => {
-    if (rooms[roomName]) {
-      rooms[roomName].userCount = Math.max(rooms[roomName].userCount - 1, 0);
-      socket.leave(roomName);
-      io.to(roomName).emit('update-user-count', rooms[roomName].userCount);
-      console.log(`User left room ${roomName}: ${rooms[roomName].userCount}`);
-    }
+  socket.on('leave-waiting-room', () => {
+    userCount = Math.max(userCount - 1, 0); // Decrement the user count, clipping it to 0
+    io.emit('update-user-count', userCount);
   });
 
   socket.on('disconnect', () => {
