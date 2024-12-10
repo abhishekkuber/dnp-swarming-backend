@@ -7,12 +7,9 @@ const cors = require('cors'); // Import CORS
 const fs = require('fs');
 const { spawn } = require('child_process');
 
-
 const app = express();
 const server = http.createServer(app);
 app.use(express.json());
-
-
 
 let clientCoordinates = {};
 let puckCoordinates = {};
@@ -21,21 +18,14 @@ let center = {};
 let poiCoords = null;
 let userCount = 0;
 let updateRatings = true;
-// test change sdhjfbjk
 
 let readyUsers = 0;
 let leaderboard = [];
 
-// let swarmRatings = [];
-// let swarmComments = [];
-// let swarmReceipts = []; hsdlhflssnfsnksjksdfsd
-
-
 let jsonFilePath = path.join(__dirname, 'data/new_bucket.jsonl');
 
 const corsOptions = {
-  origin: '*', // Allow requests from any originjas
-
+  origin: '*', // Allow requests from any origin
   methods: ['GET', 'POST'], 
   credentials: true,
 };
@@ -44,11 +34,24 @@ app.use(cors(corsOptions));
 
 const io = new Server(server, {
   cors: {
-    origin: '*', // Allow requests from any originsss
+    origin: '*', // Allow requests from any origin
     methods: ['GET', 'POST'],
     credentials: true,
   },
 });
+
+const roomUserCounts = {
+  room1: 0,
+  room2: 0,
+  room3: 0
+};
+
+
+const readyUserCounts = {
+  room1: 0,
+  room2: 0,
+  room3: 0
+}
 
 
 io.on('connection', (socket) => {
@@ -67,7 +70,7 @@ io.on('connection', (socket) => {
       existingPOIs = fileData.map(line => JSON.parse(line));
     }
 
-    // Generate a new unique id for the POI fkhdafk
+    // Generate a new unique id for the POI
     const newId = existingPOIs.length ? Math.max(...existingPOIs.map(poi => parseInt(poi.id))) + 1 : 1;
 
     // Create the new POI object
@@ -88,57 +91,52 @@ io.on('connection', (socket) => {
     callback({ message: 'POI added successfully', newPOI });
   });
 
-  socket.on('user-ready', () => {
-    readyUsers++;
-    console.log('User is ready : ', readyUsers);
-    if (readyUsers >= userCount){
-      console.log('GOTOSWARM!!!')
-      // test
-      readyUsers = 0;
-      userCount = 0;
-      updateRatings = true;
-      console.log('UserCount after reset : ', userCount);
-      console.log('ReadyUsers after reset  : ', readyUsers);
-      io.emit('go-to-swarm');
-    } else {
-      io.emit('update-user-ready-client', readyUsers);
+  // socket.on('user-ready', () => {
+  //   readyUsers++;
+  //   console.log('User is ready : ', readyUsers);
+  //   if (readyUsers >= userCount){
+  //     console.log('GOTOSWARM!!!')
+  //     readyUsers = 0;
+  //     userCount = 0;
+  //     updateRatings = true;
+  //     console.log('UserCount after reset : ', userCount);
+  //     console.log('ReadyUsers after reset  : ', readyUsers);
+  //     io.emit('go-to-swarm');
+  //   } else {
+  //     io.emit('update-user-ready-client', readyUsers);
+  //   }
+  // });
+  
+  // socket.on('user-not-ready', () => {
+  //   readyUsers--;
+  //   console.log('User is not ready : ', readyUsers);
+  //   io.emit('update-user-ready-client', readyUsers);
+  // });
+  socket.on('user-ready', (room) => {
+    readyUserCounts[room]++;
+    io.to(room).emit('update-user-ready-client', readyUserCounts[room]);
+    
+    if (readyUserCounts[room] >= roomUserCounts[room]) {
+      io.to(room).emit('go-to-swarm');
+      readyUserCounts[room] = 0; // Reset ready user count for the room
     }
   });
 
-  socket.on('user-not-ready', () => {
-    readyUsers--;
-    console.log('User is not ready : ', readyUsers);
-    io.emit('update-user-ready-client', readyUsers);
+  socket.on('user-not-ready', (room) => {
+    readyUserCounts[room] = Math.max(readyUserCounts[room] - 1, 0);
+    io.to(room).emit('update-user-ready-client', readyUserCounts[room]);
   });
 
-  // socket.on('send-swarm-results', (data) => {
-  //   swarmRatings.push(data.swarmRating);
-  //   swarmComments.push(data.swarmComment) //;
-  //   swarmReceipts.push(data.firstName + ' ' + data.lastName);
-
-  //   if ((swarmRatings.length==userCount) && (swarmComments.length==userCount) && (swarmReceipts.length==userCount)){
-  //     console.log('SAVING IN FILE');
-  //     // SAVE THE THREE VARIABLES HERE IN THE JSON FILE!
-  //     // I have made a temporary empty jsonl file called swarm_receipts.jsonl
-  //     // userCount = 0;
-  //   }
-    
-  //   // console.log('Printing the swarm receipts');
-  //   // console.log(swarmRatings);
-  //   // console.log(swarmComments);
-  //   // console.log(swarmReceipts);
-  // })
-
-
-  socket.on('reset-counts', () => {
+  socket.on('reset-counts', (room) => {
     readyUsers = 0;
     userCount = 0;
+    roomUserCounts[room] = 0;
+    readyUserCounts[room] = 0;  
   });
 
   // Handle when a user joins the waiting room
   socket.on('join-waiting-room', () => {
     userCount++; // Increment user count
-    // totalUsers++;
     io.emit('update-user-count', Math.max(userCount, 0)); // Emit the updated user count to all clients
     
     console.log(`Join-waiting room event: ${userCount}`);
@@ -149,7 +147,7 @@ io.on('connection', (socket) => {
       const N_new = 4;
       const N_old = 0;
 
-      const pythonProcess = spawn('python', [
+      const pythonProcess = spawn('python3', [
         'pythonscripts/drawing.py',
         N_new.toString(),
         N_old.toString()
@@ -162,7 +160,6 @@ io.on('connection', (socket) => {
         let drawnTitles = poiData[1];
         let drawnOneliners = poiData[2];
         let drawnDescriptions = poiData[3];
-
 
         const payload = {
           drawnTitles: drawnTitles,
@@ -188,47 +185,34 @@ io.on('connection', (socket) => {
     }
   });
 
-  function normalizeArray(arr) {
-    const norm = Math.sqrt(arr.reduce((acc, val) => acc + val * val, 0));
-    if (norm === 0) return arr;
-    return arr.map(val => val / norm);
-  }
-
-  function updatePosition(midpointPos, radius, puckPos, cursorPos, numPlayers) {
-    try {
-      // Calculate relative positions of the cursors to the puck
-      const relativeCursorPos = cursorPos.map(pos => pos.map((val, idx) => val - puckPos[idx]));
-  
-      // Normalize the relative positions of the cursors
-      const normalizedCursorPos = relativeCursorPos.map(pos => normalizeArray(pos));
-  
-      // Calculate the normalized direction vector of the puck
-      const direction = normalizedCursorPos.reduce((acc, pos) => acc.map((val, idx) => val + pos[idx]), [0, 0]);
-      const strength = Math.sqrt(direction.reduce((acc, val) => acc + val * val, 0)) / numPlayers;
-      const normalizedDirection = normalizeArray(direction);
-  
-      // Calculate the timestep based on the distance and the speed of the puck
-      const timestep = 3 / (100e-3);
-      const stepsize = radius / timestep; // distance per timestep
-  
-      // Calculate the new position of the puck
-      let newPuckPosition = puckPos.map((val, idx) => val + stepsize * normalizedDirection[idx] * strength);
-  
-      // Check if the new puck position is outside the circle, if so, set it to the edge of the circle
-      const distanceFromMidpoint = Math.sqrt(newPuckPosition.reduce((acc, val, idx) => acc + Math.pow(val - midpointPos[idx], 2), 0));
-      if (distanceFromMidpoint > radius) {
-        const positionVec = newPuckPosition.map((val, idx) => val - midpointPos[idx]);
-        const unitVec = normalizeArray(positionVec);
-        newPuckPosition = midpointPos.map((val, idx) => val + unitVec[idx] * radius);
-      }
-  
-      newPuckPosition = newPuckPosition.map(val => Math.round(val * 1000) / 1000);
-  
-      return newPuckPosition;
-    } catch (error) {
-      throw new Error(`Error in updatePosition: ${error.message}`);
+  socket.on('join-room', (room) => {
+    console.log(`User joining ${room}`);
+    socket.join(room);
+    
+    // Increment the user count for the room
+    roomUserCounts[room]++;
+    
+    // Emit the updated user count for the room
+    io.to(room).emit('update-room-user-count', { room, count: roomUserCounts[room] });
+    
+    // Check if the room has 4 users
+    if (roomUserCounts[room] === 2) {
+      startSwarming(room);
     }
-  }
+    
+    socket.emit('joined-room', room);
+  });
+
+  socket.on('leave-room', (room) => {
+    console.log(`User leaving ${room}`);
+    socket.leave(room);
+    
+    // Decrement the user count for the room
+    roomUserCounts[room] = Math.max(roomUserCounts[room] - 1, 0);
+    
+    // Emit the updated user count for the room
+    io.to(room).emit('update-room-user-count', { room, count: roomUserCounts[room] });
+  });
 
   socket.on('mouse-move', (data) => {
     clientCoordinates[socket.id] = { x: data.cursorPosition.x, y: data.cursorPosition.y };
@@ -242,7 +226,6 @@ io.on('connection', (socket) => {
   
     try {
       const calculatedPuckPosition = updatePosition(midpoint, radius_tmp, puckPositionList, coordinatesList, num_players);
-      // console.log('Calculated puck position:', calculatedPuckPosition);
   
       // Broadcast the new puck position to all clients
       puckCoordinates.x = calculatedPuckPosition[0];
@@ -270,7 +253,6 @@ io.on('connection', (socket) => {
       console.error(`Error in updatePosition: ${error.message}`);
     }
   });
-  
 
   socket.on('connection-data', (data) => {
     radius = data.radius;
@@ -306,7 +288,7 @@ io.on('connection', (socket) => {
     if (updateRatings){
       console.log('Updating ratings');
       updateRatings = false;
-      const pythonProcess = spawn('python', [
+      const pythonProcess = spawn('python3', [
         'pythonscripts/rating.py',
         JSON.stringify(data)
       ]);
@@ -318,15 +300,13 @@ io.on('connection', (socket) => {
       });
 
     }
-    // console.log('Getting IDs from swarmresults.vue')
-    // console.log(data);
-  });
+  });
 
   socket.on('get-leaderboard', () => {
     console.log('Getting leaderboard');
     const N = 10;
 
-    const pythonProcess = spawn('python', [
+    const pythonProcess = spawn('python3', [
       'pythonscripts/leaderboard.py',
       N.toString()
     ]);
@@ -347,7 +327,6 @@ io.on('connection', (socket) => {
     });
   }); 
 
-  
   // Decrement user count only when the user cancels the popup (leaves waiting room)
   socket.on('leave-waiting-room', () => {
     userCount = Math.max(userCount - 1, 0); // Decrement the user count, clipping it to 0
@@ -360,20 +339,96 @@ io.on('connection', (socket) => {
   });
 });
 
-// // Checks whether the client coordinates are being correctly printed, only for debugging, doesnt contribute to the logic
-setInterval(() => {
-  // console.log('Client Coordinates:', clientCoordinates);
-  // console.log('Puck Coordinates:', puckCoordinates);
-  // console.log(radius);
-  // console.log(center);
-}, 1000);
+function startSwarming(room) {
+  console.log(`Starting swarming in ${room}`);
+  
+  const N_new = 4;
+  const N_old = 0;
+
+  const pythonProcess = spawn('python3', [
+    'pythonscripts/drawing.py',
+    N_new.toString(),
+    N_old.toString()
+  ]);
+
+  pythonProcess.stdout.on('data', (result) => {
+    // The result from the Python script comes in as a buffer, so we need to convert it to a string
+    const poiData = JSON.parse(result.toString());
+    let drawnIds = poiData[0];
+    let drawnTitles = poiData[1];
+    let drawnOneliners = poiData[2];
+    let drawnDescriptions = poiData[3];
+
+    const payload = {
+      drawnTitles: drawnTitles,
+      drawnIds: drawnIds,
+      drawnOneliners: drawnOneliners,
+      drawnDescriptions: drawnDescriptions,
+      userCount: roomUserCounts[room]
+    };
+    
+    io.to(room).emit('start-swarming', payload); // Emit an event to users in the room to start the swarm
+    swarmComments = [];
+    swarmRatings = [];
+    swarmReceipts = [];
+  });
+
+  pythonProcess.stderr.on('data', (error) => {
+    console.error(`Error in drawing: ${error.toString()}`);
+  });
+
+  pythonProcess.on('close', (code) => {
+    console.log(`Python drawing process exited with code ${code}`);
+  });
+}
+
+function normalizeArray(arr) {
+  const norm = Math.sqrt(arr.reduce((acc, val) => acc + val * val, 0));
+  if (norm === 0) return arr;
+  return arr.map(val => val / norm);
+}
+
+function updatePosition(midpointPos, radius, puckPos, cursorPos, numPlayers) {
+  try {
+    // Calculate relative positions of the cursors to the puck
+    const relativeCursorPos = cursorPos.map(pos => pos.map((val, idx) => val - puckPos[idx]));
+
+    // Normalize the relative positions of the cursors
+    const normalizedCursorPos = relativeCursorPos.map(pos => normalizeArray(pos));
+
+    // Calculate the normalized direction vector of the puck
+    const direction = normalizedCursorPos.reduce((acc, pos) => acc.map((val, idx) => val + pos[idx]), [0, 0]);
+    const strength = Math.sqrt(direction.reduce((acc, val) => acc + val * val, 0)) / numPlayers;
+    const normalizedDirection = normalizeArray(direction);
+
+    // Calculate the timestep based on the distance and the speed of the puck
+    const timestep = 3 / (100e-3);
+    const stepsize = radius / timestep; // distance per timestep
+
+    // Calculate the new position of the puck
+    let newPuckPosition = puckPos.map((val, idx) => val + stepsize * normalizedDirection[idx] * strength);
+
+    // Check if the new puck position is outside the circle, if so, set it to the edge of the circle
+    const distanceFromMidpoint = Math.sqrt(newPuckPosition.reduce((acc, val, idx) => acc + Math.pow(val - midpointPos[idx], 2), 0));
+    if (distanceFromMidpoint > radius) {
+      const positionVec = newPuckPosition.map((val, idx) => val - midpointPos[idx]);
+      const unitVec = normalizeArray(positionVec);
+      newPuckPosition = midpointPos.map((val, idx) => val + unitVec[idx] * radius);
+    }
+
+    newPuckPosition = newPuckPosition.map(val => Math.round(val * 1000) / 1000);
+
+    return newPuckPosition;
+  } catch (error) {
+    throw new Error(`Error in updatePosition: ${error.message}`);
+  }
+}
 
 // For all other routes, log a message
 app.get('*', (req, res) => {
   console.log('Hello from the server!'); // Log the message
   res.sendStatus(200); // Respond with a 200 OK status
 });
-
 
 // Start the server on port 4000
 const PORT = process.env.PORT || 4000;
