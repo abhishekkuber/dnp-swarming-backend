@@ -11,6 +11,8 @@ const app = express();
 const server = http.createServer(app);
 app.use(express.json());
 
+
+const SWARM_SIZE = 2;
 let clientCoordinates = {};
 let puckCoordinates = {};
 let radius = null;
@@ -18,6 +20,7 @@ let center = {};
 let poiCoords = null;
 let userCount = 0;
 let updateRatings = true;
+let waitingList = [];
 
 let readyUsers = 0;
 let leaderboard = [];
@@ -40,55 +43,68 @@ const io = new Server(server, {
   },
 });
 
-const roomUserCounts = {
-  room1: 0,
-  room2: 0,
-  room3: 0
-};
-
-
-const readyUserCounts = {
-  room1: 0,
-  room2: 0,
-  room3: 0
+function generateRandomRoomName(length=5) {
+  const characters = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return result;
 }
 
+// const roomUserCounts = {
+//   room1: 0,
+//   room2: 0,
+//   room3: 0
+// };
+
+const roomUserCounts = {};
+const readyUserCounts = {};
 
 io.on('connection', (socket) => {
   console.log('A user has joined:', socket.id);
   clientCoordinates[socket.id] = { x: 250, y: 250 };
 
   // Add poi from the frontend
-  socket.on('add-poi', (formData, callback) => {
-    const { title, one_liner, description } = formData;
+  socket.on('add-pois', (formData, callback) => {
+    console.log('printing from server');
+    console.log(`Form data: ${formData}`);
 
     let existingPOIs = [];
-
+  
     // Check if the file exists and is not empty
     if (fs.existsSync(jsonFilePath) && fs.statSync(jsonFilePath).size > 0) {
       const fileData = fs.readFileSync(jsonFilePath, 'utf-8').trim().split('\n');
       existingPOIs = fileData.map(line => JSON.parse(line));
     }
+    formData.forEach((formData) => {
+      const { title, one_liner, description } = formData;
+  
+      // Generate a new unique id for the POI
+      const newId = existingPOIs.length ? Math.max(...existingPOIs.map(poi => parseInt(poi.id))) + 1 : 1;
+  
+      // Create the new POI object
+      const newPOI = {
+        id: newId.toString(),
+        title,
+        one_liner,
+        description,
+        mu: 25,       // Default value
+        sigma: 8.333, // Default value
+        swarm_score: 0 // Initial swarm score
+      };
 
-    // Generate a new unique id for the POI
-    const newId = existingPOIs.length ? Math.max(...existingPOIs.map(poi => parseInt(poi.id))) + 1 : 1;
-
-    // Create the new POI object
-    const newPOI = {
-      id: newId.toString(),
-      title,
-      one_liner,
-      description,
-      mu: 25,       // Default value
-      sigma: 8.333, // Default value
-      swarm_score: 0 // Initial swarm score
-    };
-
-    // Append the new POI object to the file
-    fs.appendFileSync(jsonFilePath, JSON.stringify(newPOI) + '\n');
-
+      console.log(`New POI: ${JSON.stringify(newPOI)}`);
+  
+      // Append the new POI object to the file
+      fs.appendFileSync(jsonFilePath, JSON.stringify(newPOI) + '\n');
+  
+      // Add the new POI to the existing POIs list
+      existingPOIs.push(newPOI);
+    });
+  
     // Send a response back to the client using the callback function
-    callback({ message: 'POI added successfully', newPOI });
+    callback({ status: "ok" });
   });
 
   // socket.on('user-ready', () => {
@@ -113,12 +129,17 @@ io.on('connection', (socket) => {
   //   io.emit('update-user-ready-client', readyUsers);
   // });
   socket.on('user-ready', (room) => {
+    // console.log('Printing from the room :', room);
+    // console.log(readyUserCounts[room])
+    // console.log(roomUserCounts[room])
     readyUserCounts[room]++;
     io.to(room).emit('update-user-ready-client', readyUserCounts[room]);
     
     if (readyUserCounts[room] >= roomUserCounts[room]) {
       io.to(room).emit('go-to-swarm');
-      readyUserCounts[room] = 0; // Reset ready user count for the room
+      // readyUserCounts[room] = 0; // Reset ready user count for the room
+      delete readyUserCounts[room];
+      delete roomUserCounts[room];
     }
   });
 
@@ -127,11 +148,96 @@ io.on('connection', (socket) => {
     io.to(room).emit('update-user-ready-client', readyUserCounts[room]);
   });
 
+  socket.on('admin-joining', () => {
+    readyUsers++;
+    console.log('Admin is ready : ', readyUsers);
+  })
+
   socket.on('reset-counts', (room) => {
-    readyUsers = 0;
-    userCount = 0;
-    roomUserCounts[room] = 0;
-    readyUserCounts[room] = 0;  
+    readyUsers--;
+    userCount--;
+    // roomUserCounts[room] = 0;
+    // readyUserCounts[room] = 0;  
+  });
+  
+  socket.on('join-random-swarm', () => {
+    // make a list of active rooms
+    userCount++;
+    io.emit('update-user-ready-client', userCount);
+    waitingList.push(socket.id);
+    
+    if (userCount >= SWARM_SIZE) {
+      //Draw 5 poi's from data/new_data.jsonl with using python script
+      console.log(`Waiting list: ${waitingList}`);
+      const N_new = 4;
+      const N_old = 0;
+
+
+
+      const pythonProcess = spawn('python3', [
+        'pythonscripts/drawing.py',
+        N_new.toString(),
+        N_old.toString()
+      ]);
+
+      pythonProcess.stdout.on('data', (result) => {
+        // The result from the Python script comes in as a buffer, so we need to convert it to a string
+        const poiData = JSON.parse(result.toString());
+        let drawnIds = poiData[0];
+        let drawnTitles = poiData[1];
+        let drawnOneliners = poiData[2];
+        let drawnDescriptions = poiData[3];
+        
+        const room = `room${generateRandomRoomName()}`;
+        
+        const payload = {
+          drawnTitles: drawnTitles,
+          drawnIds: drawnIds,
+          drawnOneliners: drawnOneliners,
+          drawnDescriptions: drawnDescriptions,
+          userCount: userCount
+        }
+        // io.emit('start-swarming', payload); // Emit an event to all users to start the swarm
+        // const room = `room${Math.floor(Math.random() * 3) + 1}`;
+        
+        // using a for loop, get the first SWARM_SIZE users from the waiting list and add them to the room
+        for (let i = 0; i < SWARM_SIZE; i++) {
+          const user = waitingList.shift();
+          io.sockets.sockets.get(user).join(room);
+        }
+        roomUserCounts[room] = SWARM_SIZE;
+        readyUserCounts[room] = 0;
+        io.to(room).emit('update-room-user-count', { room: room, count: roomUserCounts[room] });
+        console.log(`${SWARM_SIZE} users being redirected to random room`)
+        readyUsers = readyUsers - SWARM_SIZE;
+        io.emit('update-user-ready-client', readyUsers);
+        io.to(room).emit('start-swarming', payload); // Emit an event to users in the room to start the swarm
+
+        // const user1 = waitingList.shift();
+        // const user2 = waitingList.shift();
+
+        // if (user1 && user2) {
+        //   io.sockets.sockets.get(user1).join(room);
+        //   io.sockets.sockets.get(user2).join(room);
+        //   roomUserCounts[room] = SWARM_SIZE;
+        //   readyUserCounts[room] = 0;
+        //   io.to(room).emit('update-room-user-count', { room: room, count: roomUserCounts[room] });
+        //   console.log(`${SWARM_SIZE} users being redirected to random room`)
+        //   readyUsers = readyUsers - SWARM_SIZE;
+        //   io.emit('update-user-ready-client', readyUsers);
+        //   io.to(room).emit('start-swarming', payload); // Emit an event to users in the room to start the swarm
+        // }
+      }); 
+      
+      pythonProcess.stderr.on('data', (error) => {
+        console.error(`Error in drawing: ${error.toString()}`);
+      });
+
+      pythonProcess.on('close', (code) => {
+        console.log(`Python drawing process exited with code ${code}`);
+      });
+
+    }
   });
 
   // Handle when a user joins the waiting room
@@ -334,8 +440,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    console.log('printing client disconnecting from the server side')
     delete clientCoordinates[socket.id];
+    waitingList = waitingList.filter(id => id !== socket.id);
     console.log('A user disconnected:', socket.id);
+    // console.log('User count after disconnect:', userCount);
+    io.emit('update-user-ready-client', userCount);
   });
 });
 
@@ -350,6 +460,8 @@ function startSwarming(room) {
     N_new.toString(),
     N_old.toString()
   ]);
+
+  
 
   pythonProcess.stdout.on('data', (result) => {
     // The result from the Python script comes in as a buffer, so we need to convert it to a string
@@ -432,6 +544,6 @@ app.get('*', (req, res) => {
 
 // Start the server on port 4000
 const PORT = process.env.PORT || 4000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on ${PORT}`);
 });
