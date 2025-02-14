@@ -63,7 +63,7 @@ const readyUserCounts = {};
 
 io.on('connection', (socket) => {
   console.log('A user has joined:', socket.id);
-  clientCoordinates[socket.id] = { x: 250, y: 250 };
+  // clientCoordinates[socket.id] = { x: 250, y: 250 };
 
   // Add poi from the frontend
   socket.on('add-pois', (formData, callback) => {
@@ -107,37 +107,12 @@ io.on('connection', (socket) => {
     callback({ status: "ok" });
   });
 
-  // socket.on('user-ready', () => {
-  //   readyUsers++;
-  //   console.log('User is ready : ', readyUsers);
-  //   if (readyUsers >= userCount){
-  //     console.log('GOTOSWARM!!!')
-  //     readyUsers = 0;
-  //     userCount = 0;
-  //     updateRatings = true;
-  //     console.log('UserCount after reset : ', userCount);
-  //     console.log('ReadyUsers after reset  : ', readyUsers);
-  //     io.emit('go-to-swarm');
-  //   } else {
-  //     io.emit('update-user-ready-client', readyUsers);
-  //   }
-  // });
-  
-  // socket.on('user-not-ready', () => {
-  //   readyUsers--;
-  //   console.log('User is not ready : ', readyUsers);
-  //   io.emit('update-user-ready-client', readyUsers);
-  // });
   socket.on('user-ready', (room) => {
-    // console.log('Printing from the room :', room);
-    // console.log(readyUserCounts[room])
-    // console.log(roomUserCounts[room])
     readyUserCounts[room]++;
     io.to(room).emit('update-user-ready-client', readyUserCounts[room]);
     
     if (readyUserCounts[room] >= roomUserCounts[room]) {
       io.to(room).emit('go-to-swarm');
-      // readyUserCounts[room] = 0; // Reset ready user count for the room
       delete readyUserCounts[room];
       delete roomUserCounts[room];
     }
@@ -155,20 +130,21 @@ io.on('connection', (socket) => {
 
   socket.on('reset-counts', (room) => {
     readyUsers--;
-    userCount--;
-    // roomUserCounts[room] = 0;
-    // readyUserCounts[room] = 0;  
+    // userCount--;
+    console.log("PRINTING JUST BEFORE GOING TO SWARM: ", waitingList.length);
+    delete roomUserCounts[room];
+    delete readyUserCounts[room];
   });
   
   socket.on('join-random-swarm', () => {
-    // make a list of active rooms
-    userCount++;
-    io.emit('update-user-ready-client', userCount);
+
+    // userCount++;
     waitingList.push(socket.id);
+    io.emit('update-user-ready-client', waitingList.length);
+    console.log(`User count: ${waitingList.length}`);
     
-    if (userCount >= SWARM_SIZE) {
-      //Draw 5 poi's from data/new_data.jsonl with using python script
-      console.log(`Waiting list: ${waitingList}`);
+    
+    if (waitingList.length >= SWARM_SIZE) {
       const N_new = 4;
       const N_old = 0;
 
@@ -187,147 +163,58 @@ io.on('connection', (socket) => {
         let drawnTitles = poiData[1];
         let drawnOneliners = poiData[2];
         let drawnDescriptions = poiData[3];
+
+        console.log('poiData:', poiData);
         
         const room = `room${generateRandomRoomName()}`;
+        clientCoordinates[room] = {};
         
         const payload = {
           drawnTitles: drawnTitles,
           drawnIds: drawnIds,
           drawnOneliners: drawnOneliners,
           drawnDescriptions: drawnDescriptions,
-          userCount: userCount
+          userCount: waitingList.length
         }
-        // io.emit('start-swarming', payload); // Emit an event to all users to start the swarm
-        // const room = `room${Math.floor(Math.random() * 3) + 1}`;
         
-        // using a for loop, get the first SWARM_SIZE users from the waiting list and add them to the room
         for (let i = 0; i < SWARM_SIZE; i++) {
+
           const user = waitingList.shift();
+          clientCoordinates[room][socket.id] = { x: 250, y: 250 };  
           io.sockets.sockets.get(user).join(room);
         }
+        
         roomUserCounts[room] = SWARM_SIZE;
         readyUserCounts[room] = 0;
         io.to(room).emit('update-room-user-count', { room: room, count: roomUserCounts[room] });
-        console.log(`${SWARM_SIZE} users being redirected to random room`)
-        readyUsers = readyUsers - SWARM_SIZE;
-        io.emit('update-user-ready-client', readyUsers);
+        // console.log(`${SWARM_SIZE} users being redirected to random room`)
+        // readyUsers = readyUsers - SWARM_SIZE;
+        io.emit('update-user-ready-client', waitingList.length);
         io.to(room).emit('start-swarming', payload); // Emit an event to users in the room to start the swarm
-
-        // const user1 = waitingList.shift();
-        // const user2 = waitingList.shift();
-
-        // if (user1 && user2) {
-        //   io.sockets.sockets.get(user1).join(room);
-        //   io.sockets.sockets.get(user2).join(room);
-        //   roomUserCounts[room] = SWARM_SIZE;
-        //   readyUserCounts[room] = 0;
-        //   io.to(room).emit('update-room-user-count', { room: room, count: roomUserCounts[room] });
-        //   console.log(`${SWARM_SIZE} users being redirected to random room`)
-        //   readyUsers = readyUsers - SWARM_SIZE;
-        //   io.emit('update-user-ready-client', readyUsers);
-        //   io.to(room).emit('start-swarming', payload); // Emit an event to users in the room to start the swarm
-        // }
       }); 
       
       pythonProcess.stderr.on('data', (error) => {
         console.error(`Error in drawing: ${error.toString()}`);
       });
 
-      pythonProcess.on('close', (code) => {
-        console.log(`Python drawing process exited with code ${code}`);
-      });
+      // pythonProcess.on('close', (code) => {
+      //   console.log(`Python drawing process exited with code ${code}`);
+      // });
 
     }
   });
 
-  // Handle when a user joins the waiting room
-  socket.on('join-waiting-room', () => {
-    userCount++; // Increment user count
-    io.emit('update-user-count', Math.max(userCount, 0)); // Emit the updated user count to all clients
-    
-    console.log(`Join-waiting room event: ${userCount}`);
-
-    // If enough users have joined, start the swarm
-    if (userCount >= 4) {
-      //Draw 5 poi's from data/new_data.jsonl with using python script
-      const N_new = 4;
-      const N_old = 0;
-
-      const pythonProcess = spawn('python3', [
-        'pythonscripts/drawing.py',
-        N_new.toString(),
-        N_old.toString()
-      ]);
-
-      pythonProcess.stdout.on('data', (result) => {
-        // The result from the Python script comes in as a buffer, so we need to convert it to a string
-        const poiData = JSON.parse(result.toString());
-        let drawnIds = poiData[0];
-        let drawnTitles = poiData[1];
-        let drawnOneliners = poiData[2];
-        let drawnDescriptions = poiData[3];
-
-        const payload = {
-          drawnTitles: drawnTitles,
-          drawnIds: drawnIds,
-          drawnOneliners: drawnOneliners,
-          drawnDescriptions: drawnDescriptions,
-          userCount: userCount
-        }
-        io.emit('start-swarming', payload); // Emit an event to all users to start the swarm
-        swarmComments = [];
-        swarmRatings = [];
-        swarmReceipts = [];
-      }); 
-      
-      pythonProcess.stderr.on('data', (error) => {
-        console.error(`Error in drawing: ${error.toString()}`);
-      });
-
-      pythonProcess.on('close', (code) => {
-        console.log(`Python drawing process exited with code ${code}`);
-      });
-
-    }
-  });
-
-  socket.on('join-room', (room) => {
-    console.log(`User joining ${room}`);
-    socket.join(room);
-    
-    // Increment the user count for the room
-    roomUserCounts[room]++;
-    
-    // Emit the updated user count for the room
-    io.to(room).emit('update-room-user-count', { room, count: roomUserCounts[room] });
-    
-    // Check if the room has 4 users
-    if (roomUserCounts[room] === 2) {
-      startSwarming(room);
-    }
-    
-    socket.emit('joined-room', room);
-  });
-
-  socket.on('leave-room', (room) => {
-    console.log(`User leaving ${room}`);
-    socket.leave(room);
-    
-    // Decrement the user count for the room
-    roomUserCounts[room] = Math.max(roomUserCounts[room] - 1, 0);
-    
-    // Emit the updated user count for the room
-    io.to(room).emit('update-room-user-count', { room, count: roomUserCounts[room] });
-  });
 
   socket.on('mouse-move', (data) => {
-    clientCoordinates[socket.id] = { x: data.cursorPosition.x, y: data.cursorPosition.y };
+    // clientCoordinates[socket.id] = { x: data.cursorPosition.x, y: data.cursorPosition.y };
+    clientCoordinates[data.room][socket.id] = { x: data.cursorPosition.x, y: data.cursorPosition.y };
     puckCoordinates = data.puckPosition;
   
     const midpoint = [center.x, center.y];
     const radius_tmp = radius;
     const puckPositionList = [puckCoordinates.x, puckCoordinates.y];
-    const coordinatesList = Object.values(clientCoordinates).map(coord => [coord.x, coord.y]);
+    // const coordinatesList = Object.values(clientCoordinates).map(coord => [coord.x, coord.y]);
+    const coordinatesList = Object.values(clientCoordinates[data.room]).map(coord => [coord.x, coord.y]);
     const num_players = coordinatesList.length;
   
     try {
@@ -390,14 +277,21 @@ io.on('connection', (socket) => {
   });
 
   socket.on('swarming-result-ids', (data)=> {
-    console.log('Getting swarmingresultids from the frontend', data);
+    console.log('Getting swarmingresultids from the frontend', data.swarmIds);
+    
+    // Delete client coordinates
+    if (clientCoordinates[data.room]){
+      delete clientCoordinates[data.room];
+    }
+
     if (updateRatings){
       console.log('Updating ratings');
       updateRatings = false;
       const pythonProcess = spawn('python3', [
         'pythonscripts/rating.py',
-        JSON.stringify(data)
+        JSON.stringify(data.swarmIds)
       ]);
+    
   
       pythonProcess.stdout.on('data', (result) => {
         // The result from the Python script comes in as a buffer, so we need to convert it to a string
@@ -412,9 +306,12 @@ io.on('connection', (socket) => {
     console.log('Getting leaderboard');
     const N = 10;
 
+    // const pythonProcess = spawn('python3', [
+    //   'pythonscripts/leaderboard.py',
+    //   N.toString()
+    // ]);
     const pythonProcess = spawn('python3', [
-      'pythonscripts/leaderboard.py',
-      N.toString()
+      'pythonscripts/leaderboard.py'
     ]);
 
     pythonProcess.stdout.on('data', (result) => {
@@ -433,66 +330,31 @@ io.on('connection', (socket) => {
     });
   }); 
 
-  // Decrement user count only when the user cancels the popup (leaves waiting room)
-  socket.on('leave-waiting-room', () => {
-    userCount = Math.max(userCount - 1, 0); // Decrement the user count, clipping it to 0
-    io.emit('update-user-count', userCount);
-  });
+  socket.on('disconnect', (reason) => {
+    // console.log('printing client disconnecting from the server side');
+    console.log('Reason for disconnect:', reason);
 
-  socket.on('disconnect', () => {
-    console.log('printing client disconnecting from the server side')
-    delete clientCoordinates[socket.id];
+
+    for (const room in clientCoordinates) {
+      if (clientCoordinates[room][socket.id]) {
+        delete clientCoordinates[room][socket.id];
+        break;
+      }
+    }
+
+    // DELETING THE CLIENT COORDINATES OF THE DISCONNECTED SOCKET
+    // delete clientCoordinates[socket.id];
+
     waitingList = waitingList.filter(id => id !== socket.id);
+    if (reason === 'transport close') {
+      console.log('TRANSPORT CLOSE');
+      // userCount = Math.max(userCount-1, 0);
+    }
     console.log('A user disconnected:', socket.id);
-    // console.log('User count after disconnect:', userCount);
-    io.emit('update-user-ready-client', userCount);
+    console.log('User count after disconnect:', waitingList.length);
+    io.emit('update-user-ready-client', waitingList.length);
   });
 });
-
-function startSwarming(room) {
-  console.log(`Starting swarming in ${room}`);
-  
-  const N_new = 4;
-  const N_old = 0;
-
-  const pythonProcess = spawn('python3', [
-    'pythonscripts/drawing.py',
-    N_new.toString(),
-    N_old.toString()
-  ]);
-
-  
-
-  pythonProcess.stdout.on('data', (result) => {
-    // The result from the Python script comes in as a buffer, so we need to convert it to a string
-    const poiData = JSON.parse(result.toString());
-    let drawnIds = poiData[0];
-    let drawnTitles = poiData[1];
-    let drawnOneliners = poiData[2];
-    let drawnDescriptions = poiData[3];
-
-    const payload = {
-      drawnTitles: drawnTitles,
-      drawnIds: drawnIds,
-      drawnOneliners: drawnOneliners,
-      drawnDescriptions: drawnDescriptions,
-      userCount: roomUserCounts[room]
-    };
-    
-    io.to(room).emit('start-swarming', payload); // Emit an event to users in the room to start the swarm
-    swarmComments = [];
-    swarmRatings = [];
-    swarmReceipts = [];
-  });
-
-  pythonProcess.stderr.on('data', (error) => {
-    console.error(`Error in drawing: ${error.toString()}`);
-  });
-
-  pythonProcess.on('close', (code) => {
-    console.log(`Python drawing process exited with code ${code}`);
-  });
-}
 
 function normalizeArray(arr) {
   const norm = Math.sqrt(arr.reduce((acc, val) => acc + val * val, 0));
