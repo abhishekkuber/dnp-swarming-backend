@@ -12,7 +12,7 @@ const server = http.createServer(app);
 app.use(express.json());
 
 // heroku
-const SWARM_SIZE = 2;
+const SWARM_SIZE = 1;
 let clientCoordinates = {};
 let puckCoordinates = {};
 let radius = null;
@@ -115,6 +115,7 @@ io.on('connection', (socket) => {
       io.to(room).emit('go-to-swarm');
       delete readyUserCounts[room];
       delete roomUserCounts[room];
+      puckCoordinates[room] = { x: 250, y: 250};
     }
   });
 
@@ -208,11 +209,13 @@ io.on('connection', (socket) => {
   socket.on('mouse-move', (data) => {
     // clientCoordinates[socket.id] = { x: data.cursorPosition.x, y: data.cursorPosition.y };
     clientCoordinates[data.room][socket.id] = { x: data.cursorPosition.x, y: data.cursorPosition.y };
-    puckCoordinates = data.puckPosition;
-  
+    // puckCoordinates = data.puckPosition;
+    puckCoordinates[data.room] = data.puckPosition;
+    console.log('Puck coordinates:', puckCoordinates);
+
     const midpoint = [center.x, center.y];
     const radius_tmp = radius;
-    const puckPositionList = [puckCoordinates.x, puckCoordinates.y];
+    const puckPositionList = [puckCoordinates[data.room].x, puckCoordinates[data.room].y];
     // const coordinatesList = Object.values(clientCoordinates).map(coord => [coord.x, coord.y]);
     const coordinatesList = Object.values(clientCoordinates[data.room]).map(coord => [coord.x, coord.y]);
     const num_players = coordinatesList.length;
@@ -221,20 +224,20 @@ io.on('connection', (socket) => {
       const calculatedPuckPosition = updatePosition(midpoint, radius_tmp, puckPositionList, coordinatesList, num_players);
   
       // Broadcast the new puck position to all clients
-      puckCoordinates.x = calculatedPuckPosition[0];
-      puckCoordinates.y = calculatedPuckPosition[1];
+      puckCoordinates[data.room].x = calculatedPuckPosition[0];
+      puckCoordinates[data.room].y = calculatedPuckPosition[1];
   
       if (poiCoords !== null) {
         for (const poi of poiCoords) {
           const distanceToOption = distance(
-            { pointOneX: puckCoordinates.x, pointOneY: puckCoordinates.y },
+            { pointOneX: puckCoordinates[data.room].x, pointOneY: puckCoordinates[data.room].y },
             { pointTwoX: poi.x, pointTwoY: poi.y }
           );
   
           if (distanceToOption < 18) {
-            io.emit('puck-collision', poi.name);
-            puckCoordinates.x = center.x;
-            puckCoordinates.y = center.y;
+            io.emit('puck-collision', {poiName: poi.name, room: data.room});
+            puckCoordinates[data.room].x = center.x;
+            puckCoordinates[data.room].y = center.y;
             io.emit('puck-move', puckCoordinates);
           }
         }
@@ -282,6 +285,10 @@ io.on('connection', (socket) => {
     // Delete client coordinates
     if (clientCoordinates[data.room]){
       delete clientCoordinates[data.room];
+    }
+
+    if(puckCoordinates[data.room]){
+      delete puckCoordinates[data.room];
     }
 
     if (updateRatings){
