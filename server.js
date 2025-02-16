@@ -17,7 +17,8 @@ let clientCoordinates = {};
 let puckCoordinates = {};
 let radius = null;
 let center = {};
-let poiCoords = null;
+// let poiCoords = null;
+let poiCoords = {};
 let userCount = 0;
 let updateRatings = true;
 let waitingList = [];
@@ -227,8 +228,8 @@ io.on('connection', (socket) => {
       puckCoordinates[data.room].x = calculatedPuckPosition[0];
       puckCoordinates[data.room].y = calculatedPuckPosition[1];
   
-      if (poiCoords !== null) {
-        for (const poi of poiCoords) {
+      if (poiCoords[data.room] !== null) {
+        for (const poi of poiCoords[data.room]) {
           const distanceToOption = distance(
             { pointOneX: puckCoordinates[data.room].x, pointOneY: puckCoordinates[data.room].y },
             { pointTwoX: poi.x, pointTwoY: poi.y }
@@ -256,7 +257,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('puck-coordinates-data', (data) => {
-    poiCoords = data.poiCoords;
+    poiCoords[data.room] = data.poiCoords;
   });
 
   socket.on('get-new-bucket', () => {
