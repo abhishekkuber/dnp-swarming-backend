@@ -12,7 +12,7 @@ const server = http.createServer(app);
 app.use(express.json());
 
 // heroku
-const SWARM_SIZE = 1;
+const SWARM_SIZE = 2;
 let clientCoordinates = {};
 let puckCoordinates = {};
 let radius = null;
@@ -212,7 +212,7 @@ io.on('connection', (socket) => {
     clientCoordinates[data.room][socket.id] = { x: data.cursorPosition.x, y: data.cursorPosition.y };
     // puckCoordinates = data.puckPosition;
     puckCoordinates[data.room] = data.puckPosition;
-    console.log('Puck coordinates:', puckCoordinates);
+    // console.log('Puck coordinates:', puckCoordinates);
 
     const midpoint = [center.x, center.y];
     const radius_tmp = radius;
@@ -372,18 +372,24 @@ function normalizeArray(arr) {
 
 function updatePosition(midpointPos, radius, puckPos, cursorPos, numPlayers) {
   try {
-    // Calculate relative positions of the cursors to the puck
+    // Finds the relative position of each cursor compared to the puck.
+    // If a cursor is to the right of the puck, its x influence will be positive.
+    // If a cursor is above the puck, its y influence will be positive.
     const relativeCursorPos = cursorPos.map(pos => pos.map((val, idx) => val - puckPos[idx]));
 
-    // Normalize the relative positions of the cursors
+    // Converts the cursor vectors into unit vectors (only showing direction, not magnitude).
+    // This ensures all inputs contribute equally, regardless of distance.
     const normalizedCursorPos = relativeCursorPos.map(pos => normalizeArray(pos));
 
-    // Calculate the normalized direction vector of the puck
+    // Summing all cursor vectors → determines where the puck should move.
+    // Divides by numPlayers → ensures equal influence from all players.
+    // Normalizes again → ensures movement is based on direction rather than raw sum.
     const direction = normalizedCursorPos.reduce((acc, pos) => acc.map((val, idx) => val + pos[idx]), [0, 0]);
     const strength = Math.sqrt(direction.reduce((acc, val) => acc + val * val, 0)) / numPlayers;
     const normalizedDirection = normalizeArray(direction);
 
     // Calculate the timestep based on the distance and the speed of the puck
+    // Essentially a speed factor
     const timestep = 3 / (100e-3);
     const stepsize = radius / timestep; // distance per timestep
 
@@ -391,6 +397,7 @@ function updatePosition(midpointPos, radius, puckPos, cursorPos, numPlayers) {
     let newPuckPosition = puckPos.map((val, idx) => val + stepsize * normalizedDirection[idx] * strength);
 
     // Check if the new puck position is outside the circle, if so, set it to the edge of the circle
+    // Makes sure the puck stays within the circle
     const distanceFromMidpoint = Math.sqrt(newPuckPosition.reduce((acc, val, idx) => acc + Math.pow(val - midpointPos[idx], 2), 0));
     if (distanceFromMidpoint > radius) {
       const positionVec = newPuckPosition.map((val, idx) => val - midpointPos[idx]);
