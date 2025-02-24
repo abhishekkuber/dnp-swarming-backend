@@ -12,7 +12,7 @@ const server = http.createServer(app);
 app.use(express.json());
 
 // heroku
-const SWARM_SIZE = 2;
+const SWARM_SIZE = 3;
 let clientCoordinates = {};
 let puckCoordinates = {};
 let radius = null;
