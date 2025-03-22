@@ -12,7 +12,7 @@ const server = http.createServer(app);
 app.use(express.json());
 
 // heroku
-const SWARM_SIZE = 3;
+const SWARM_SIZE = 1;
 let clientCoordinates = {};
 let puckCoordinates = {};
 let radius = null;
@@ -27,6 +27,12 @@ let readyUsers = 0;
 let leaderboard = [];
 
 let jsonFilePath = path.join(__dirname, 'data/new_bucket.jsonl');
+
+
+// clientCoordinates['tutorial'] = {};
+// clientCoordinates['tutorial']['user1'] = { x: 357.21525750954606, y: 470.29500347752264 }; 
+// clientCoordinates['tutorial']['user2'] = { x: 469.2982250920686, y: 359.23959205099777 };
+// clientCoordinates['tutorial']['user3'] = { x: 426.2474859757392, y: 420.1817372317946 };
 
 const corsOptions = {
   origin: '*', // Allow requests from any origin
@@ -207,8 +213,20 @@ io.on('connection', (socket) => {
   });
 
 
-  socket.on('mouse-move', (data) => {
+  socket.on('tutorial-3-mouse-move', (data) => {
     // clientCoordinates[socket.id] = { x: data.cursorPosition.x, y: data.cursorPosition.y };
+    // console.log('Tutorial Room:', data.room);
+    // console.log("data: ", data);
+    if (!clientCoordinates[data.room]) {
+      clientCoordinates[data.room] = {};
+    }
+
+    // console.log(data.cursorPosition);
+    // clientCoordinates[data.room]['user1'] = { x: 57.78992384367197, y: 401.9219754478547 };
+    clientCoordinates[data.room]['user1'] = { x: 13.579288492444732, y: 185.73300092379196 };
+    clientCoordinates[data.room]['user2'] = { x: 18.843373808451304, y: 331.1887564120834 };
+    clientCoordinates[data.room]['user3'] = { x: 8.320257503716732, y: 290.19828437794604 };
+    // console.log('clientCoordinates:', clientCoordinates);
     clientCoordinates[data.room][socket.id] = { x: data.cursorPosition.x, y: data.cursorPosition.y };
     // puckCoordinates = data.puckPosition;
     puckCoordinates[data.room] = data.puckPosition;
@@ -227,7 +245,107 @@ io.on('connection', (socket) => {
       // Broadcast the new puck position to all clients
       puckCoordinates[data.room].x = calculatedPuckPosition[0];
       puckCoordinates[data.room].y = calculatedPuckPosition[1];
+      if (poiCoords[data.room] !== null) {
+        for (const poi of poiCoords[data.room]) {
+          const distanceToOption = distance(
+            { pointOneX: puckCoordinates[data.room].x, pointOneY: puckCoordinates[data.room].y },
+            { pointTwoX: poi.x, pointTwoY: poi.y }
+          );
   
+          if (distanceToOption < 18) {
+            io.emit('puck-collision', {poiName: poi.name, room: data.room});
+            puckCoordinates[data.room].x = center.x;
+            puckCoordinates[data.room].y = center.y;
+            io.emit('puck-move', puckCoordinates);
+          }
+        }
+      }
+  
+      io.emit('puck-move', puckCoordinates);
+      io.emit('client-coordinates', clientCoordinates);
+    } catch (error) {
+      console.error(`Error in updatePosition: ${error.message}`);
+    }
+  });
+
+
+  socket.on('tutorial-mouse-move', (data) => {
+    // clientCoordinates[socket.id] = { x: data.cursorPosition.x, y: data.cursorPosition.y };
+    // console.log('Tutorial Room:', data.room);
+    // console.log("data: ", data);
+    if (!clientCoordinates[data.room]) {
+      clientCoordinates[data.room] = {};
+    }
+
+    // console.log(data.cursorPosition);
+    clientCoordinates[data.room]['user1'] = { x: 357.21525750954606, y: 470.29500347752264 }; 
+    clientCoordinates[data.room]['user2'] = { x: 469.2982250920686, y: 359.23959205099777 };
+    clientCoordinates[data.room]['user3'] = { x: 426.2474859757392, y: 420.1817372317946 };
+    clientCoordinates[data.room][socket.id] = { x: data.cursorPosition.x, y: data.cursorPosition.y };
+    // puckCoordinates = data.puckPosition;
+    puckCoordinates[data.room] = data.puckPosition;
+    // console.log('Puck coordinates:', puckCoordinates);
+
+    const midpoint = [center.x, center.y];
+    const radius_tmp = radius;
+    const puckPositionList = [puckCoordinates[data.room].x, puckCoordinates[data.room].y];
+    // const coordinatesList = Object.values(clientCoordinates).map(coord => [coord.x, coord.y]);
+    const coordinatesList = Object.values(clientCoordinates[data.room]).map(coord => [coord.x, coord.y]);
+    const num_players = coordinatesList.length;
+  
+    try {
+      const calculatedPuckPosition = updatePosition(midpoint, radius_tmp, puckPositionList, coordinatesList, num_players);
+  
+      // Broadcast the new puck position to all clients
+      puckCoordinates[data.room].x = calculatedPuckPosition[0];
+      puckCoordinates[data.room].y = calculatedPuckPosition[1];
+      if (poiCoords[data.room] !== null) {
+        for (const poi of poiCoords[data.room]) {
+          const distanceToOption = distance(
+            { pointOneX: puckCoordinates[data.room].x, pointOneY: puckCoordinates[data.room].y },
+            { pointTwoX: poi.x, pointTwoY: poi.y }
+          );
+  
+          if (distanceToOption < 18) {
+            io.emit('puck-collision', {poiName: poi.name, room: data.room});
+            puckCoordinates[data.room].x = center.x;
+            puckCoordinates[data.room].y = center.y;
+            io.emit('puck-move', puckCoordinates);
+          }
+        }
+      }
+  
+      io.emit('puck-move', puckCoordinates);
+      io.emit('client-coordinates', clientCoordinates);
+    } catch (error) {
+      console.error(`Error in updatePosition: ${error.message}`);
+    }
+  });
+
+
+  socket.on('mouse-move', (data) => {
+    if (!clientCoordinates[data.room]) {
+      clientCoordinates[data.room] = {};
+    }
+    clientCoordinates[data.room][socket.id] = { x: data.cursorPosition.x, y: data.cursorPosition.y };
+    // console.log('Cursor position: ', data.cursorPosition);
+    // puckCoordinates = data.puckPosition;
+    puckCoordinates[data.room] = data.puckPosition;
+    // console.log('Puck coordinates:', puckCoordinates);
+
+    const midpoint = [center.x, center.y];
+    const radius_tmp = radius;
+    const puckPositionList = [puckCoordinates[data.room].x, puckCoordinates[data.room].y];
+    // const coordinatesList = Object.values(clientCoordinates).map(coord => [coord.x, coord.y]);
+    const coordinatesList = Object.values(clientCoordinates[data.room]).map(coord => [coord.x, coord.y]);
+    const num_players = coordinatesList.length;
+  
+    try {
+      const calculatedPuckPosition = updatePosition(midpoint, radius_tmp, puckPositionList, coordinatesList, num_players);
+  
+      // Broadcast the new puck position to all clients
+      puckCoordinates[data.room].x = calculatedPuckPosition[0];
+      puckCoordinates[data.room].y = calculatedPuckPosition[1];
       if (poiCoords[data.room] !== null) {
         for (const poi of poiCoords[data.room]) {
           const distanceToOption = distance(
@@ -262,7 +380,6 @@ io.on('connection', (socket) => {
 
   socket.on('get-new-bucket', () => {
     const filePath = path.join(__dirname, 'data', 'new_bucket.jsonl');
-    
     // Read the file
     fs.readFile(filePath, 'utf8', (err, data) => {
         if (err) {
@@ -307,6 +424,19 @@ io.on('connection', (socket) => {
         console.log('Python process of rating exited with code', pythonCode);
       });
 
+    }
+  });
+
+  socket.on('tutorial-swarming-result-ids', (data)=> {
+    console.log('Getting swarmingresultids from the frontend', data.swarmIds);
+    
+    // Delete client coordinates
+    if (clientCoordinates[data.room]){
+      delete clientCoordinates[data.room];
+    }
+
+    if(puckCoordinates[data.room]){
+      delete puckCoordinates[data.room];
     }
   });
 
