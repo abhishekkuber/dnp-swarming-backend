@@ -28,7 +28,6 @@ let leaderboard = [];
 
 let jsonFilePath = path.join(__dirname, 'data/new_bucket.jsonl');
 
-
 // clientCoordinates['tutorial'] = {};
 // clientCoordinates['tutorial']['user1'] = { x: 357.21525750954606, y: 470.29500347752264 }; 
 // clientCoordinates['tutorial']['user2'] = { x: 469.2982250920686, y: 359.23959205099777 };
@@ -144,6 +143,14 @@ io.on('connection', (socket) => {
     delete readyUserCounts[room];
   });
   
+  socket.on('delete-all-pois', () => {
+    console.log('Deleting all POIs');
+    fs.writeFileSync(path.join(__dirname, 'data', 'new_bucket.jsonl'), '', 'utf-8'); 
+    fs.writeFileSync(path.join(__dirname, 'data', 'old_bucket.jsonl'), '', 'utf-8'); 
+    console.log('All POIs deleted');
+    io.emit('pois-deleted', { status: 'ok' });
+  });
+
   socket.on('join-random-swarm', () => {
 
     // userCount++;
