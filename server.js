@@ -12,7 +12,8 @@ const server = http.createServer(app);
 app.use(express.json());
 
 // heroku
-const SWARM_SIZE = 1;
+let SWARM_SIZE = 1;
+
 let clientCoordinates = {};
 let puckCoordinates = {};
 let radius = null;
@@ -148,8 +149,14 @@ io.on('connection', (socket) => {
     fs.writeFileSync(path.join(__dirname, 'data', 'new_bucket.jsonl'), '', 'utf-8'); 
     fs.writeFileSync(path.join(__dirname, 'data', 'old_bucket.jsonl'), '', 'utf-8'); 
     console.log('All POIs deleted');
-    io.emit('pois-deleted', { status: 'ok' });
+    // io.emit('pois-deleted', { status: 'ok' });
   });
+
+  socket.on('change-swarm-size', (newSize) => {
+    console.log('Changing swarm size to:', newSize);
+    SWARM_SIZE = newSize;
+  });
+
 
   socket.on('join-random-swarm', () => {
 
